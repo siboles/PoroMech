@@ -168,7 +168,6 @@ class Application(Frame):
                 fid.write("Time, {:s}\n".format(c))
                 for (t, v) in zip(
                         self.FileObject.time[group][c], self.FileObject.data[group][c]):
-                    print t
                     fid.write("{:12.6f}, {:12.6f}\n".format(t, v))
                 fid.close()
 
