@@ -20,10 +20,14 @@ class Application(Frame):
                                      command=self.loadFile)
         self.buttonLoadFile.grid(row=0, column=0, padx=5, pady=5,
                                  sticky=W + E)
-        self.buttonSaveFile = Button(self, text="Save to CSV",
+        self.buttonSaveFile = Button(self, text="Save Selected to Pickle",
                                      command=self.saveFile)
-        self.buttonSaveFile.grid(row=0, column=1, padx=5, pady=5,
-                                 sticky=W + E)
+        self.buttonSaveFile.grid(row=3, column=0, padx=5, pady=5,
+                                 sticky=NW)
+
+        self.buttonSaveCSV = Button(self, text="Save Selected to CSV",
+                                    command=self.saveCSV)
+        self.buttonSaveCSV.grid(row=4, column=0, padx=5, pady=5, sticky=NW)
 
         self.buttonMovingAvg = Button(self, text="Apply Moving Average",
                                       command=self.applyMovingAvg)
@@ -147,12 +151,26 @@ class Application(Frame):
         self.populateChannelList()
 
     def saveFile(self):
-        fid = open(os.path.abspath(string.replace(self.filename, ".tdms", "_data.pkl")), "wb")
-        pickle.dump(self.FileObject.data, fid, 2)
-        fid.close()
-        fid = open(os.path.abspath(string.replace(self.filename, ".tdms", "_time.pkl")), "wb")
-        pickle.dump(self.FileObject.time, fid, 2)
-        fid.close()
+        group = self.FileObject.groups[self.intSettings["Group"].get() - 1]
+        for c in self.channelSelections.keys():
+            if self.channelSelections[c].get():
+                fid = open(os.path.abspath(string.replace(
+                    self.filename, ".tdms", "_{:s}_{:s}.pkl".format(group, c))), "wb")
+                pickle.dump((self.FileObject.time[group][c], self.FileObject.data[group][c]),
+                            fid, 2)
+                fid.close()
+    def saveCSV(self):
+        group = self.FileObject.groups[self.intSettings["Group"].get() - 1]
+        for c in self.channelSelections.keys():
+            if self.channelSelections[c].get():
+                fid = open(os.path.abspath(string.replace(
+                    self.filename, ".tdms", "_{:s}_{:s}.csv".format(group, c))), "wt")
+                fid.write("Time, {:s}\n".format(c))
+                for (t, v) in zip(
+                        self.FileObject.time[group][c], self.FileObject.data[group][c]):
+                    print t
+                    fid.write("{:12.6f}, {:12.6f}\n".format(t, v))
+                fid.close()
 
 root = Tk()
 root.title("Welcome to the PoroMech GUI.")
