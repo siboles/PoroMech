@@ -3,6 +3,12 @@ import tkFileDialog
 from PoroMech import Data
 import os
 import pickle
+import string
+import matplotlib
+matplotlib.use('TkAgg')
+
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from matplotlib.figure import Figure
 
 
 class Application(Frame):
@@ -69,6 +75,47 @@ class Application(Frame):
                             text=c,
                             variable=self.channelSelections[c]).pack(anchor=W)
 
+    def makePlot(self, group, keys):
+        f = Figure()
+        self.axes = []
+        if type(keys) is list:
+            n = len(keys)
+            for i, k in enumerate(keys):
+                if i == 0:
+                    self.axes.append(f.add_subplot(n, 1, i + 1))
+                else:
+                    self.axes.append(f.add_subplot(n, 1, i + 1,
+                                                   sharex=self.axes[0]))
+                self.axes[i].plot(self.FileObject.time[group][k],
+                                  self.FileObject.data[group][k])
+                self.axes[i].set_ylabel(k)
+        else:
+            self.axes.append(f.add_subplot(1,1,1))
+            self.axes[0].plot(self.FileObject.time[group][keys],
+                              self.FileObject.data[group][keys])
+            self.axes[0].set_ylabel(keys)
+        self.axes[-1].set_xlabel("Time (s)")
+        canvas = FigureCanvasTkAgg(f, master=root)
+        canvas.show()
+        canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
+                                    padx=5, pady=5, sticky=NW)
+
+        toolbar_frame = Frame(root)
+        toolbar_frame.grid(row=1, column=2, sticky=NW)
+        toolbar = NavigationToolbar2TkAgg(canvas, toolbar_frame)
+        toolbar.update()
+
+        Button(root, text="Crop", command=self.cropData).grid(
+            row=1, column=3, sticky=NE)
+
+    def cropData(self):
+        group = self.FileObject.groups[self.intSettings["Group"].get() - 1]
+        (start, end) = self.axes[0].xaxis.get_view_interval()
+        for c in self.channelSelections.keys():
+            if self.channelSelections[c].get():
+                self.FileObject.windowData(group, c, start, end)
+        self.populateChannelList()
+
     def populateChannelList(self):
         g = self.FileObject.groups[self.intSettings["Group"].get() - 1]
         self.channelSelections = {}
@@ -86,7 +133,7 @@ class Application(Frame):
             if self.channelSelections[c].get():
                 keys.append(c)
 
-        self.FileObject.makePlot(
+        self.makePlot(
             self.FileObject.groups[self.intSettings["Group"].get() - 1],
             keys)
 
@@ -100,7 +147,12 @@ class Application(Frame):
         self.populateChannelList()
 
     def saveFile(self):
-        pass
+        fid = open(os.path.abspath(string.replace(self.filename, ".tdms", "_data.pkl")), "wb")
+        pickle.dump(self.FileObject.data, fid, 2)
+        fid.close()
+        fid = open(os.path.abspath(string.replace(self.filename, ".tdms", "_time.pkl")), "wb")
+        pickle.dump(self.FileObject.time, fid, 2)
+        fid.close()
 
 root = Tk()
 root.title("Welcome to the PoroMech GUI.")

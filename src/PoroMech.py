@@ -33,21 +33,6 @@ class Data(object):
                         self.time[g][props["NI_ChannelName"]] = c.time_track()
                         self.data[g][props["NI_ChannelName"]] = c.data
 
-    def makePlot(self, group, keys, screen=True, disk=False, colors=False):
-        if type(keys) is list:
-            n = len(keys)
-            f, axarr = plt.subplots(n, sharex=True)
-            for i, k in enumerate(keys):
-                axarr[i].plot(self.time[group][k], self.data[group][k])
-                axarr[i].set_ylabel(k)
-        else:
-            ax = plt.plot(self.time[group][keys],
-                          self.data[group][keys])
-            ax.set_ylabel(keys)
-            ax.set_xlabel("Time (s)")
-        if screen:
-            plt.show()
-
     def movingAverage(self, group, channel, win=10):
         newkey = string.join([channel, "avg", str(win)], "_")
         w = np.blackman(win)
@@ -58,9 +43,13 @@ class Data(object):
         self.time[group][newkey] = self.time[group][channel]
 
     def windowData(self, group, channel, start, end):
-        newkey = string.join([channel, "crop", str(start), str(end)], "_")
-        self.data[group][newkey] = self.data[group][channel][start:end + 1]
-        self.time[group][newkey] = self.time[group][channel][start:end + 1]
+        newkey = string.join([channel, "crop",
+                              "{:6.2f}".format(start),
+                              "{:6.2f}".format(end)], "_")
+        start_index = np.argmin(np.abs(self.time[group][channel] - start))
+        end_index = np.argmin(np.abs(self.time[group][channel] - end))
+        self.data[group][newkey] = self.data[group][channel][start_index:end_index + 1]
+        self.time[group][newkey] = self.time[group][channel][start_index:end_index + 1]
 
     def getViscoModuli(self, group, disp, force):
         rkey = string.join([group, disp, force], "_")
