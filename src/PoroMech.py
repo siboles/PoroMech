@@ -4,6 +4,8 @@ import numpy as np
 from scipy.fftpack import fft, ifft
 from scipy import conj
 import string
+from itertools import izip, count, islice, ifilter
+from collections import OrderedDict
 
 
 class Data(object):
@@ -14,6 +16,8 @@ class Data(object):
         self.filename = filename
         # Dictionary to store analysis results
         self.results = {}
+        # Dictionary to store Mach-1 thicknesses
+        self.thicknesses = {}
         self._parseFile()
 
     def _parseFile(self):
@@ -32,6 +36,42 @@ class Data(object):
                         props = c.properties
                         self.time[g][props["NI_ChannelName"]] = c.time_track()
                         self.data[g][props["NI_ChannelName"]] = c.data
+        elif self.filename.lower().endswith('.txt'):
+            fid = open(self.filename, "r")
+            if "<Mach-1 File>" in fid.readline():
+                contents = fid.readlines()
+                fid.close()
+                self.groups = []
+                self.time = OrderedDict()
+                self.data = OrderedDict()
+                self.channels = OrderedDict()
+                info_blocks = [i for i, j in izip(count(), contents) if "<INFO>" in j or "<END INFO>" in j]
+                info_blocks = izip(islice(info_blocks, 0, None, 2), islice(info_blocks, 1, None, 2))
+                data_blocks = [i for i, j in izip(count(), contents) if "<DATA>" in j or "<END DATA>" in j]
+                data_blocks = izip(islice(data_blocks, 0, None, 2), islice(data_blocks, 1, None, 2))
+                for ind in info_blocks:
+                    a = list(ifilter(lambda x: "Time" in x, contents[ind[0]+1:ind[1]]))[0].rstrip("\r\n")
+                    self.groups.append(a.replace("\t", " "))
+                for i, ind in enumerate(data_blocks):
+                    g = self.groups[i]
+                    header = contents[ind[0]+1].rstrip("\r\n").split("\t")
+                    self.channels[g] = header
+                    data = contents[ind[0]+2:ind[1]]
+                    for j, d in enumerate(data):
+                        data[j] = d.rstrip("\r\n").split("\t")
+                    data = np.array(data, float)
+                    self.time[g] = OrderedDict()
+                    self.data[g] = OrderedDict()
+                    for j, c in enumerate(self.channels[g][1:]):
+                        self.time[g][c] = data[:, 0]
+                        self.data[g][c] = data[:, j+1]
+
+    def getMaxMinIndex(self, group, channel):
+        return np.argmin(self.data[group][channel]), np.argmax(self.data[group][channel])
+
+    def getThicknessMach1(self, group):
+        ind = self.getMaxMinIndex(group, "Fz, N")[0]
+        self.thicknesses[group] = self.data[group]["Position (z), mm"][ind]
 
     def movingAverage(self, group, channel, win=10):
         newkey = string.join([channel, "avg", str(win)], "_")
@@ -74,5 +114,3 @@ class Data(object):
                                                      * np.cos(phase_shift))
             self.results['loss modulus'][rkey] = (force_amp / disp_amp
                                                   * np.sin(phase_shift))
-
-        print self.results['storage modulus'][rkey]
