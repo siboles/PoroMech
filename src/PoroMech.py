@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.fftpack import fft, ifft
 from scipy import conj
+from scipy.signal import medfilt, find_peaks_cwt
+from scipy.optimize import minimize_scalar, fmin_slsqp
 import string
 from itertools import izip, count, islice, ifilter
 from collections import OrderedDict
@@ -17,7 +19,7 @@ class Data(object):
         # Dictionary to store analysis results
         self.results = {}
         # Dictionary to store Mach-1 thicknesses
-        self.thicknesses = {}
+        self.thicknesses = OrderedDict()
         self._parseFile()
 
     def _parseFile(self):
@@ -69,9 +71,77 @@ class Data(object):
     def getMaxMinIndex(self, group, channel):
         return np.argmin(self.data[group][channel]), np.argmax(self.data[group][channel])
 
+    def bracketSearchObj(self, x, data, h):
+        print data
+        # soft material slope guess
+        m1 = (data[h] - data[0]) / float(h)
+        # hard material slope guess
+        m2 = (data[-1] - data[-h]) / float(h)
+        # hard material intercept guess
+        b2 = -m2*data.size + data[-1]
+        x0 = [m1, m2, b2]
+        step_size = np.abs(data.max() - data.min())/data.size * 0.1
+
+        args = (data, x)
+        res = fmin_slsqp(self.piecewiseLineFitObj, x0, args=args, iprint=2, epsilon=step_size)
+        return res[1]
+
+    def piecewiseLineFitObj(self, x, data, transition):
+        t = np.arange(data.size)
+        func = np.piecewise(t, [t < transition, t>= transition], [lambda t: x[0]*t + data[0],
+                                                                  lambda t: x[1]*t + x[2]])
+        N1 = data[0:transition].size
+        N2 = data.size - N1
+        weights = [float(N2)/data.size] * N1 + [float(N1) / data.size] * N2
+        weights = np.array(weights)
+        return np.linalg.norm((data - func)*weights)
+
     def getThicknessMach1(self, group):
-        ind = self.getMaxMinIndex(group, "Fz, N")[0]
-        self.thicknesses[group] = self.data[group]["Position (z), mm"][ind]
+        dt = self.time[group]["Fz, N"][1] - self.time[group]["Fz, N"][0]
+        strain_rate = np.diff(self.data[group]["Position (z), mm"]) / dt
+        if not np.any(strain_rate < 0):
+            print("Warning: It seems the needle never made contact. Terminating the thickness calculation for group: {:s}".format(group))
+            return
+        strain_rate = np.mean(strain_rate[strain_rate > 0])
+        end = self.getMaxMinIndex(group, "Fz, N")[0]
+        tmp = self.data[group]["Fz, N"][0:end+1]
+        start = np.where(np.abs(medfilt(tmp, kernel_size=19)) < 1e-2)[0][-1]
+        windows = np.arange(int(.05/dt), int(1/dt), 1)
+        transition = find_peaks_cwt(-tmp[start:], widths=windows, min_length=int(windows.size/2), min_snr=1.0)
+        tmp = tmp[start:]
+        transition = np.array(transition)
+        if transition.size > 0:
+            #shift start index to transition point (peak with max value at least 50 microns after contact)
+            transition = transition[transition>.05/strain_rate/dt]
+            if transition.any():
+                ind = np.argmax(tmp[transition])
+                transition = transition[ind]
+                #if transition is within 10 microns of the minimum force position try scale-space with weaker tolerance
+                if (tmp.size - transition) < .01/strain_rate/dt:
+                    transition = find_peaks_cwt(-tmp, widths=windows, min_length=int(windows.size/4), min_snr=1.0)
+                    transition = np.array(transition)
+                    transition = transition[transition>.05/strain_rate/dt]
+                    ind = np.argmax(tmp[transition])
+                    transition = transition[ind]
+                    #if still too close to minimum - revert to piecewise fit
+                    if (tmp.size - transition) < .01/strain_rate/dt:
+                        args = (tmp, 0.1 / dt,)
+                        res = minimize_scalar(self.bracketSearchObj,
+                                            bounds=(0, tmp.size),
+                                            args=args,
+                                            method="Bounded")
+                        transition = res.x
+            else:
+                args = (tmp, 0.1 / dt,)
+                res = minimize_scalar(self.bracketSearchObj,
+                                      bounds=(0, tmp.size),
+                                      args=args,
+                                      method="Bounded")
+                transition = res.x
+
+        self.thicknesses[group] = (np.abs(self.data[group]["Position (z), mm"][start + transition] -
+                                          self.data[group]["Position (z), mm"][start]),
+                                   (float(start + transition)*dt, start*dt))
 
     def movingAverage(self, group, channel, win=10):
         newkey = string.join([channel, "avg", str(win)], "_")

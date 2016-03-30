@@ -8,6 +8,8 @@ import string
 import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.figure import Figure
+from matplotlib.path import Path
+import matplotlib.patches as patches
 import seaborn as sns
 import numpy as np
 from numpy import ma
@@ -77,6 +79,14 @@ class Application(Frame):
         self.buttonLoadImage = Button(self.tab2, text="Load Image",
                                       command=self.loadImage)
         self.buttonLoadImage.grid(row=0, column=0, padx=5, pady=5, sticky=NW)
+
+        self.buttonDefineMask = Button(self.tab2, text="Define Mask",
+                                       command=self.cropImage)
+        self.buttonDefineMask.grid(row=1, column=0, padx=5, pady=5, sticky=NW)
+        self.buttonClearMask = Button(self.tab2, text="Clear Mask",
+                                      command=self.clearMask)
+        self.buttonClearMask.grid(row=2, column=0, padx=5, pady=5, sticky=NW)
+
         ##### END TAB 2 #####
         self.grid()
 
@@ -134,15 +144,20 @@ class Application(Frame):
                                                    sharex=self.axes[0]))
                 self.axes[i].plot(self.FileObject.time[group][k],
                                   self.FileObject.data[group][k])
-                if self.FileObject.thicknesses and k == "Position (z), mm":
-                    self.axes[i].axhline(y=self.FileObject.thicknesses[group])
+                if self.FileObject.thicknesses and k == "Fz, N":
+                    try:
+                        self.axes[i].axvline(x=self.FileObject.thicknesses[group][1][0], color='r')
+                        self.axes[i].axvline(x=self.FileObject.thicknesses[group][1][1], color='g')
+                    except:
+                        pass
                 self.axes[i].set_ylabel(k)
         else:
             self.axes.append(f.add_subplot(1,1,1))
             self.axes[0].plot(self.FileObject.time[group][keys],
                               self.FileObject.data[group][keys])
-            if self.FileObject.thicknesses and k == "Position (z), mm":
-                self.axes[i].axhline(y=self.FileObject.thicknesses[group])
+            if self.FileObject.thicknesses and k == "Fz, N":
+                self.axes[i].axvline(l=self.FileObject.thicknesses[group][1][0], color='r')
+                self.axes[i].axvline(l=self.FileObject.thicknesses[group][1][1], color='g')
             self.axes[0].set_ylabel(keys)
         self.axes[-1].set_xlabel("Time (s)")
         canvas = FigureCanvasTkAgg(f, master=self.tab1)
@@ -161,6 +176,7 @@ class Application(Frame):
     def findThicknesses(self):
         for i, g in enumerate(self.FileObject.groups):
             self.FileObject.getThicknessMach1(g)
+        print self.FileObject.thicknesses
 
     def cropData(self):
         group = self.FileObject.groups[self.intSettings["Group"].get() - 1]
@@ -244,7 +260,8 @@ class Application(Frame):
             print("A file was not selected")
             return
         self.image = imread(self.imagefile)
-        self.cropImage()
+        self.cropimage=False
+        self.plotImage()
 
         #try:
         #    self.image = imread(self.imagefile)
@@ -253,62 +270,85 @@ class Application(Frame):
         #    print("Image loading failed. Ensure that the selected file is a valid image.")
 
     def cropImage(self):
-        f = Figure()
-        ax = f.add_subplot(111)
-        ax.imshow(self.image)
+        self.image_fig = Figure((6.0, 6.0/self.image_aspect), dpi=self.image_dpi, frameon=False)
+        self.image_ax = self.image_fig.add_axes([0, 0, 1.0, 1.0,])
+        self.image_ax.imshow(self.image)
+        self.image_ax.get_xaxis().set_visible(False)
+        self.image_ax.get_yaxis().set_visible(False)
+        self.image_ax.grid(False)
         self.points = []
         self.polygons = []
-        canvas = FigureCanvasTkAgg(f, master=self.tab2)
-        canvas.get_tk_widget().bind("<Button-1>", self.XY_handler)
-        canvas.get_tk_widget().bind("<Button-2>", self.nextPolygon)
-        canvas.get_tk_widget().bind("<Return>", self.UpdateMask)
-        canvas.show()
-        canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
+        self.image_canvas = FigureCanvasTkAgg(self.image_fig, master=self.tab2)
+        self.image_canvas.get_tk_widget().bind("<Button-1>", self.XY_handler)
+        self.image_canvas.get_tk_widget().bind("<Button-3>", self.nextPolygon)
+        self.image_canvas.get_tk_widget().bind("<Return>", self.UpdateMask)
+        self.image_canvas.show()
+        self.image_canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
                                     rowspan=4, padx=5, pady=5, sticky=NW)
 
     def XY_handler(self, aHandledEVENT):
         self.points.append((aHandledEVENT.x, aHandledEVENT.y))
+        if len(self.points) > 1:
+            self.addLine()
+
+    def addLine(self):
+        codes = [Path.MOVETO] + [Path.LINETO] * (len(self.points) - 1)
+        path = Path(tuple(self.points), codes)
+        patch = patches.PathPatch(path, lw=2)
+        self.image_ax.add_patch(patch)
+        self.image_canvas.draw()
 
     def nextPolygon(self, aHandledEVENT):
-        self.polygons.append(np.copy(self.points))
+        tmp = np.copy(self.points)
+        tmp = np.vstack((tmp, tmp[0,:]))
+        self.polygons.append(tmp)
         self.points = []
 
     def UpdateMask(self, aHandledEVENT):
-        img = Image.new('L', self.image.shape[0:2], 0)
+        img = Image.new('L', (self.image.shape[1], self.image.shape[0]), 0)
+        drw = ImageDraw.Draw(img, 'L')
         for p in self.polygons:
-            ImageDraw.Draw(img).polygon(p, outline=1, fill=1)
-        self.maskimage = np.array([np.array(img), np.array(img), np.array(img)])
-        matplotlib.pyplot.imshow(ma.masked_where(self.maskimage==0, self.image))
-        matplotlib.pyplot.show()
+            p = p.ravel()
+            drw.polygon(tuple(p), outline=1, fill=1)
+        self.maskimage = np.zeros(self.image.shape)
+        for i in xrange(3):
+            self.maskimage[:, :, i] = np.array(img)
+        self.cropimage = True
+        self.plotImage()
 
+    def clearMask(self):
+        self.cropimage = False
+        self.plotImage()
 
     def plotImage(self, data=None):
-        f = Figure()
-        ax = f.add_subplot(111)
+        self.image_aspect = float(self.image.shape[1])/float(self.image.shape[0])
+        self.image_dpi = self.image.shape[1]/6.0
+        self.image_fig = Figure((6.0, 6.0/self.image_aspect), dpi=self.image_dpi, frameon=False)
+        self.image_ax = self.image_fig.add_axes([0.0, 0.0, 1.0, 1.0,])
         if self.cropimage:
-            ax.imshow(self.cropimage)
+            self.image_ax.imshow(self.image * self.maskimage)
         else:
-            ax.imshow(self.image)
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-        ax.grid(False)
-        grid_size = (960, 1280)
-        datax = np.random.randint(grid_size[0], size=(22, 1))
-        datay = np.random.randint(grid_size[1], size=(22, 1))
-        z = np.random.rand(22)
-        gridx, gridy = np.mgrid[0:grid_size[0], 0:grid_size[1]]
-        data = np.hstack((datax, datay))
-        data = np.float32(data)
-        gridz = griddata(data, z, (gridx, gridy), method='nearest')
-        if not(data is None):
-            ax.hold(True)
-            cmap = sns.cubehelix_palette(light=1, as_cmap=True)
-            im = ax.imshow(gridz, cmap=cmap, alpha=0.5)
-            f.colorbar(im)
+            self.image_ax.imshow(self.image)
+        self.image_ax.get_xaxis().set_visible(False)
+        self.image_ax.get_yaxis().set_visible(False)
+        self.image_ax.grid(False)
+        #grid_size = (960, 1280)
+        #datax = np.random.randint(grid_size[0], size=(22, 1))
+        #datay = np.random.randint(grid_size[1], size=(22, 1))
+        #z = np.random.rand(22)
+        #gridx, gridy = np.mgrid[0:grid_size[0], 0:grid_size[1]]
+        #data = np.hstack((datax, datay))
+        #data = np.float32(data)
+        #gridz = griddata(data, z, (gridx, gridy), method='nearest')
+        #if not(data is None):
+        #    self.image_ax.hold(True)
+        #    cmap = sns.cubehelix_palette(light=1, as_cmap=True)
+        #    im = self.image_ax.imshow(gridz, cmap=cmap, alpha=0.5)
+        #    self.image_fig.colorbar(im)
 
-        canvas = FigureCanvasTkAgg(f, master=self.tab2)
-        canvas.show()
-        canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
+        self.image_canvas = FigureCanvasTkAgg(self.image_fig, master=self.tab2)
+        self.image_canvas.show()
+        self.image_canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
                                     rowspan=4, padx=5, pady=5, sticky=NW)
 
 
