@@ -1,3 +1,4 @@
+import subprocess
 from setuptools import setup
 from setuptools.dist import Distribution
 from codecs import open
@@ -5,6 +6,7 @@ import os
 import platform
 
 
+here = os.path.abspath(os.path.dirname(__file__))
 class BinaryDistribution(Distribution):
     def is_pure(self):
         return False
