@@ -1,0 +1,11 @@
+--allow-all-external
+--index-url https://pypi.python.org/simple/
+--find-links=https://webdisk.ucalgary.ca/~ssibole/public_html/
+
+numpy
+scipy
+matplotlib
+PIL
+nptdms
+febio
+seaborn

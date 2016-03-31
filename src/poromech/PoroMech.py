@@ -8,6 +8,7 @@ from scipy.optimize import minimize_scalar, fmin_slsqp
 import string
 from itertools import izip, count, islice, ifilter
 from collections import OrderedDict
+from operator import methodcaller
 
 
 class Data(object):
@@ -142,6 +143,14 @@ class Data(object):
         self.thicknesses[group] = (np.abs(self.data[group]["Position (z), mm"][start + transition] -
                                           self.data[group]["Position (z), mm"][start]),
                                    (float(start + transition)*dt, start*dt))
+    def readMach1PositionMap(self, filename):
+        fid = open(filename, "r")
+        lines = map(string.strip, fid.readlines())
+        fid.close()
+        start = lines.index("PixelX	PixelY	PointID	PointType	Sub-SurfaceID")
+        lines =  map(methodcaller("split", "\t"), lines[start+1:])
+        data = [map(int, item[0:2]) for item in lines if len(item)==5 and item[3]=='0']
+        self.MachPositions = np.array(data)
 
     def movingAverage(self, group, channel, win=10):
         newkey = string.join([channel, "avg", str(win)], "_")

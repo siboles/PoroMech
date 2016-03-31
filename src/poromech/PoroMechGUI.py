@@ -80,12 +80,16 @@ class Application(Frame):
                                       command=self.loadImage)
         self.buttonLoadImage.grid(row=0, column=0, padx=5, pady=5, sticky=NW)
 
+        self.buttonLoadMapFile = Button(self.tab2, text="Load Mach-1 Site Locations",
+                                        command=self.loadMachMap)
+
+        self.buttonLoadMapFile.grid(row=1, column=0, padx=5, pady=5, sticky=NW)
         self.buttonDefineMask = Button(self.tab2, text="Define Mask",
                                        command=self.cropImage)
-        self.buttonDefineMask.grid(row=1, column=0, padx=5, pady=5, sticky=NW)
+        self.buttonDefineMask.grid(row=2, column=0, padx=5, pady=5, sticky=NW)
         self.buttonClearMask = Button(self.tab2, text="Clear Mask",
                                       command=self.clearMask)
-        self.buttonClearMask.grid(row=2, column=0, padx=5, pady=5, sticky=NW)
+        self.buttonClearMask.grid(row=3, column=0, padx=5, pady=5, sticky=NW)
 
         ##### END TAB 2 #####
         self.grid()
@@ -176,7 +180,6 @@ class Application(Frame):
     def findThicknesses(self):
         for i, g in enumerate(self.FileObject.groups):
             self.FileObject.getThicknessMach1(g)
-        print self.FileObject.thicknesses
 
     def cropData(self):
         group = self.FileObject.groups[self.intSettings["Group"].get() - 1]
@@ -268,6 +271,16 @@ class Application(Frame):
         #    self.cropImage()
         #except:
         #    print("Image loading failed. Ensure that the selected file is a valid image.")
+    def loadMachMap(self):
+        self.mapfile = tkFileDialog.askopenfilename(
+            parent=root,
+            initialdir=os.getcwd(),
+            filetypes=[('Mach-1 map files', '.map')],
+            title="Select the Mach-1 map file")
+        if not self.mapfile:
+            print("A file was not selected")
+            return
+        self.FileObject.readMach1PositionMap(self.mapfile)
 
     def cropImage(self):
         self.image_fig = Figure((6.0, 6.0/self.image_aspect), dpi=self.image_dpi, frameon=False)
@@ -305,14 +318,12 @@ class Application(Frame):
         self.points = []
 
     def UpdateMask(self, aHandledEVENT):
-        img = Image.new('L', (self.image.shape[1], self.image.shape[0]), 0)
+        img = Image.new('L', (self.image.shape[1], self.image.shape[0]), 1)
         drw = ImageDraw.Draw(img, 'L')
         for p in self.polygons:
             p = p.ravel()
-            drw.polygon(tuple(p), outline=1, fill=1)
-        self.maskimage = np.zeros(self.image.shape)
-        for i in xrange(3):
-            self.maskimage[:, :, i] = np.array(img)
+            drw.polygon(tuple(p), outline=1, fill=0)
+        self.maskimage = np.array(img, dtype=bool)
         self.cropimage = True
         self.plotImage()
 
@@ -326,7 +337,9 @@ class Application(Frame):
         self.image_fig = Figure((6.0, 6.0/self.image_aspect), dpi=self.image_dpi, frameon=False)
         self.image_ax = self.image_fig.add_axes([0.0, 0.0, 1.0, 1.0,])
         if self.cropimage:
-            self.image_ax.imshow(self.image * self.maskimage)
+            cropped = np.copy(self.image)
+            cropped[self.maskimage, :] = 0
+            self.image_ax.imshow(cropped)
         else:
             self.image_ax.imshow(self.image)
         self.image_ax.get_xaxis().set_visible(False)
@@ -347,10 +360,11 @@ class Application(Frame):
         #    self.image_fig.colorbar(im)
 
         self.image_canvas = FigureCanvasTkAgg(self.image_fig, master=self.tab2)
-        self.image_canvas.show()
+        self.image_canvas.draw()
         self.image_canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
                                     rowspan=4, padx=5, pady=5, sticky=NW)
-
+    def overlayData(self):
+        self.image_ax.hold(True)
 
 root = Tk()
 root.title("Welcome to the PoroMech GUI.")
