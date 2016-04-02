@@ -8,5 +8,7 @@ matplotlib
 Pillow
 nptdms
 febio
+numexpr
 pandas
 seaborn
+

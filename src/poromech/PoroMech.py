@@ -9,6 +9,7 @@ import string
 from itertools import izip, count, islice, ifilter
 from collections import OrderedDict
 from operator import methodcaller
+import pandas as pd
 
 
 class Data(object):
@@ -44,7 +45,6 @@ class Data(object):
             if "<Mach-1 File>" in fid.readline():
                 contents = fid.readlines()
                 fid.close()
-                self.groups = []
                 self.time = OrderedDict()
                 self.data = OrderedDict()
                 self.channels = OrderedDict()
@@ -52,9 +52,7 @@ class Data(object):
                 info_blocks = izip(islice(info_blocks, 0, None, 2), islice(info_blocks, 1, None, 2))
                 data_blocks = [i for i, j in izip(count(), contents) if "<DATA>" in j or "<END DATA>" in j]
                 data_blocks = izip(islice(data_blocks, 0, None, 2), islice(data_blocks, 1, None, 2))
-                for ind in info_blocks:
-                    a = list(ifilter(lambda x: "Time" in x, contents[ind[0]+1:ind[1]]))[0].rstrip("\r\n")
-                    self.groups.append(a.replace("\t", " "))
+                self.groups = range(1, len(list(info_blocks))+1)
                 for i, ind in enumerate(data_blocks):
                     g = self.groups[i]
                     header = contents[ind[0]+1].rstrip("\r\n").split("\t")
@@ -101,7 +99,7 @@ class Data(object):
         dt = self.time[group]["Fz, N"][1] - self.time[group]["Fz, N"][0]
         strain_rate = np.diff(self.data[group]["Position (z), mm"]) / dt
         if not np.any(strain_rate < 0):
-            print("Warning: It seems the needle never made contact. Terminating the thickness calculation for group: {:s}".format(group))
+            print("Warning: It seems the needle never made contact. Terminating the thickness calculation for group: {:d}".format(group))
             return
         strain_rate = np.mean(strain_rate[strain_rate > 0])
         end = self.getMaxMinIndex(group, "Fz, N")[0]
@@ -149,8 +147,9 @@ class Data(object):
         fid.close()
         start = lines.index("PixelX	PixelY	PointID	PointType	Sub-SurfaceID")
         lines =  map(methodcaller("split", "\t"), lines[start+1:])
-        data = [map(int, item[0:2]) for item in lines if len(item)==5 and item[3]=='0']
-        self.MachPositions = np.array(data)
+        lines = [item for item in lines if len(item)==5]
+        self.MachPositions = pd.DataFrame(lines, columns=["PixelX", "PixelY", "PointID", "PointType", "SubSurfaceID"])
+        self.MachPositions[["PixelX", "PixelY", "PointID", "PointType"]] = self.MachPositions[["PixelX", "PixelY", "PointID", "PointType"]].astype(np.uint16)
 
     def movingAverage(self, group, channel, win=10):
         newkey = string.join([channel, "avg", str(win)], "_")

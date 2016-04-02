@@ -16,6 +16,7 @@ from numpy import ma
 from scipy.ndimage import imread
 from scipy.interpolate import griddata
 from PIL import Image, ImageDraw
+from collections import OrderedDict
 
 sns.set()
 
@@ -23,6 +24,12 @@ sns.set()
 class Application(Frame):
     def __init__(self, master):
         Frame.__init__(self, master)
+        self.FileObjects = []
+        self.intSettings = {'Group': IntVar(value=1),
+                            'DataObject': IntVar(value=1),
+                            'FieldVariables': IntVar(value=1)}
+
+        self.FieldVariables = OrderedDict()
 
         self.notebook = Notebook(self)
         self.tab1 = Frame(self.notebook)
@@ -32,64 +39,77 @@ class Application(Frame):
         self.notebook.grid(row=0, column=0, sticky=NW)
 
         #####  BEGIN TAB 1 #####
-        self.intSettings = {'Group': IntVar(value=1)}
         self.buttonLoadFile = Button(self.tab1, text="Load Data File",
                                      command=self.loadFile)
-        self.buttonLoadFile.grid(row=0, column=0, padx=5, pady=5,
-                                 sticky=W + E)
-        self.buttonSaveFile = Button(self.tab1, text="Save Selected to Pickle",
-                                     command=self.saveFile)
-        self.buttonSaveFile.grid(row=3, column=0, padx=5, pady=5,
-                                 sticky=NW)
-
-        self.buttonGetThickness = Button(self.tab1, text="Get Mach-1 Thicknesses",
-                                         command=self.findThicknesses)
-        self.buttonGetThickness.grid(row=5, column=0, padx=5, pady=5, sticky=NW)
-
-        self.buttonSaveCSV = Button(self.tab1, text="Save Selected to CSV",
-                                    command=self.saveCSV)
-        self.buttonSaveCSV.grid(row=4, column=0, padx=5, pady=5, sticky=NW)
-
-        self.buttonMovingAvg = Button(self.tab1, text="Apply Moving Average",
-                                      command=self.applyMovingAvg)
-        self.buttonMovingAvg.grid(row=2, column=1, padx=5, pady=5,
-                                  sticky=W + E)
-        self.windowSize = IntVar(value=10)
-        Label(self.tab1, text="Window Size").grid(row=3, column=1, padx=5, pady=5,
-                                             sticky=NW)
-        Entry(self.tab1, textvariable=self.windowSize).grid(row=4, column=1, padx=5,
-                                                       pady=5, sticky=NW)
+        self.buttonLoadFile.grid(row=0, column=0, padx=1, pady=1,
+                                 sticky=N+W+E)
+        self.buttonRemoveFile = Button(self.tab1, text="Remove Selected File")
+        self.buttonRemoveFile.grid(row=1, column=0, padx=1, pady=1, sticky=N+W+E)
+        self.frameDataObjects = LabelFrame(self.tab1, text="Data Files")
+        self.frameDataObjects.grid(row=0, column=1, padx=1, pady=1, sticky=N+W+E)
 
         self.frameGroups = LabelFrame(self.tab1, text="Group Selection")
-        self.frameGroups.grid(row=1, column=0, padx=5, pady=5,
-                              sticky=N + E + W + S)
-        Label(self.frameGroups, text="").grid(row=0, column=0, sticky=NW)
+        self.frameGroups.grid(row=2, column=0, padx=1, pady=1,
+                              sticky=N+W+E )
+        Label(self.frameGroups, text="").grid(row=0, column=0, sticky=N+W+E)
         self.frameChannels = LabelFrame(self.tab1, text="Channel Selection")
-        self.frameChannels.grid(row=1, column=1, padx=5, pady=5,
-                                sticky=N + E + W + S)
-        Label(self.frameChannels, text="").grid(row=0, column=0, sticky=NW)
+        self.frameChannels.grid(row=2, column=1, padx=1, pady=1,
+                                sticky=N+W+E)
+        Label(self.frameChannels, text="").grid(row=0, column=0, sticky=N+W+E)
 
-        self.buttonPlot = Button(self.tab1, text="Plot Selected Channels",
+        self.frameTab1BottomLeft = Frame(self.tab1)
+        self.frameTab1BottomLeft.grid(row=3, column=0, padx=1, pady=1, sticky=N+W+E)
+        self.buttonSaveFile = Button(self.frameTab1BottomLeft, text="Save Selected to Pickle",
+                                     command=self.saveFile)
+        self.buttonSaveFile.grid(row=0, column=0, padx=1, pady=1,
+                                 sticky=N+W+E)
+
+        self.buttonSaveCSV = Button(self.frameTab1BottomLeft, text="Save Selected to CSV",
+                                    command=self.saveCSV)
+        self.buttonSaveCSV.grid(row=1, column=0, padx=1, pady=1, sticky=N+W+E)
+
+        self.buttonGetThickness = Button(self.frameTab1BottomLeft, text="Get Mach-1 Thicknesses",
+                                         command=self.findThicknesses)
+        self.buttonGetThickness.grid(row=2, column=0, padx=1, pady=1, sticky=N+W+E)
+
+        self.buttonPlot = Button(self.frameTab1BottomLeft, text="Plot Selected Channels",
                                  command=self.plotChannels)
-        self.buttonPlot.grid(row=2, column=0, padx=5, pady=5,
-                             sticky=W + E)
+        self.buttonPlot.grid(row=3, column=0, padx=1, pady=1,
+                             sticky=N+W+E)
+
+        self.frameTab1BottomRight = Frame(self.tab1)
+        self.frameTab1BottomRight.grid(row=3, column=1, padx=1, pady=1, sticky=N+W+E)
+        self.buttonMovingAvg = Button(self.frameTab1BottomRight, text="Apply Moving Average",
+                                      command=self.applyMovingAvg)
+        self.buttonMovingAvg.grid(row=0, column=0, padx=1, pady=1, columnspan=2,
+                                  sticky=N+W+E)
+        self.windowSize = IntVar(value=10)
+        Label(self.frameTab1BottomRight, text="Window Size").grid(row=1, column=0, padx=1, pady=1,
+                                                                  sticky=N+W)
+        Entry(self.frameTab1BottomRight, textvariable=self.windowSize, width=4).grid(row=1, column=1, padx=1,
+                                                                                     pady=1, sticky=N+W)
         #####  END TAB 1 #####
 
         ##### BEGIN TAB 2 #####
-        self.buttonLoadImage = Button(self.tab2, text="Load Image",
+        self.frameImageButtons = Frame(self.tab2)
+        self.frameImageButtons.grid(row=0, column=0, padx=1, pady=1, sticky=N+W+E)
+        self.buttonLoadImage = Button(self.frameImageButtons, text="Load Image",
                                       command=self.loadImage)
-        self.buttonLoadImage.grid(row=0, column=0, padx=5, pady=5, sticky=NW)
+        self.buttonLoadImage.grid(row=0, column=0, padx=1, pady=1, sticky=N+W+E)
 
-        self.buttonLoadMapFile = Button(self.tab2, text="Load Mach-1 Site Locations",
+        self.buttonLoadMapFile = Button(self.frameImageButtons, text="Load Mach-1 Site Locations",
                                         command=self.loadMachMap)
 
-        self.buttonLoadMapFile.grid(row=1, column=0, padx=5, pady=5, sticky=NW)
-        self.buttonDefineMask = Button(self.tab2, text="Define Mask",
+        self.buttonLoadMapFile.grid(row=1, column=0, padx=1, pady=1, sticky=N+W+E)
+        self.buttonDefineMask = Button(self.frameImageButtons, text="Define Mask",
                                        command=self.cropImage)
-        self.buttonDefineMask.grid(row=2, column=0, padx=5, pady=5, sticky=NW)
-        self.buttonClearMask = Button(self.tab2, text="Clear Mask",
+        self.buttonDefineMask.grid(row=2, column=0, padx=1, pady=1, sticky=N+W+E)
+        self.buttonClearMask = Button(self.frameImageButtons, text="Clear Mask",
                                       command=self.clearMask)
-        self.buttonClearMask.grid(row=3, column=0, padx=5, pady=5, sticky=NW)
+        self.buttonClearMask.grid(row=3, column=0, padx=1, pady=1, sticky=N+W+E)
+
+        self.frameFieldVariables = LabelFrame(self.tab2, text="Field Variables")
+        self.frameFieldVariables.grid(row=1, column=0, padx=1, pady=1, sticky=N+W+E)
 
         ##### END TAB 2 #####
         self.grid()
@@ -100,32 +120,33 @@ class Application(Frame):
             initialdir=os.getcwd(),
             title="Select a Data File.")
         if self.filename:
-            self.FileObject = Data(self.filename)
+            self.FileObjects.append(Data(self.filename))
             for child in self.frameGroups.grid_slaves():
                 child.grid_remove()
                 del child
+            self.intSettings["Group"].set(1)
             row = 0
             column = 0
-            for i, g in enumerate(self.FileObject.groups):
+            for i, g in enumerate(self.FileObjects[-1].groups):
                 if i % 12 == 0:
                     row = 0
                     column += 1
                 Radiobutton(self.frameGroups,
                             text=g,
                             indicatoron=0,
-                            width=20,
+                            width=5,
                             variable=self.intSettings["Group"],
                             command=self.populateChannelList,
                             value=i+1).grid(row=row, column=column, sticky=NW)
                 row += 1
-            g = self.FileObject.groups[self.intSettings["Group"].get() - 1]
+            g = self.FileObjects[-1].groups[self.intSettings["Group"].get() - 1]
             for child in self.frameChannels.grid_slaves():
                 child.grid_remove()
                 del child
             row = 0
             column = 0
             self.channelSelections = {}
-            for c in self.FileObject.time[g].keys():
+            for c in self.FileObjects[-1].time[g].keys():
                 if i % 12 == 0:
                     row = 0
                     column += 1
@@ -134,6 +155,49 @@ class Application(Frame):
                             text=c,
                             variable=self.channelSelections[c]).grid(row=row, column=column, sticky=NW)
                 row += 1
+            counter = len(self.frameDataObjects.grid_slaves()) + 1
+            Radiobutton(self.frameDataObjects,
+                        text=os.path.split(self.filename)[1],
+                        indicatoron=0,
+                        variable=self.intSettings["DataObject"],
+                        command=self.selectDataObject,
+                        value=counter).grid(row=counter, column=0, sticky=N+E+W)
+
+    def selectDataObject(self):
+        for child in self.frameGroups.grid_slaves():
+            child.grid_remove()
+            del child
+        self.intSettings["Group"].set(1)
+        row = 0
+        column = 0
+        for i, g in enumerate(self.FileObjects[self.intSettings["DataObject"].get()-1].groups):
+            if i % 12 == 0:
+                row = 0
+                column += 1
+            Radiobutton(self.frameGroups,
+                        text=g,
+                        indicatoron=0,
+                        width=5,
+                        variable=self.intSettings["Group"],
+                        command=self.populateChannelList,
+                        value=i+1).grid(row=row, column=column, sticky=NW)
+            row += 1
+        g = self.FileObjects[self.intSettings["DataObject"].get()-1].groups[self.intSettings["Group"].get() - 1]
+        for child in self.frameChannels.grid_slaves():
+            child.grid_remove()
+            del child
+        row = 0
+        column = 0
+        self.channelSelections = {}
+        for c in self.FileObjects[self.intSettings["DataObject"].get()-1].time[g].keys():
+            if i % 12 == 0:
+                row = 0
+                column += 1
+            self.channelSelections[c] = IntVar(value=0)
+            Checkbutton(self.frameChannels,
+                        text=c,
+                        variable=self.channelSelections[c]).grid(row=row, column=column, sticky=NW)
+            row += 1
 
     def makePlot(self, group, keys):
         f = Figure()
@@ -146,58 +210,62 @@ class Application(Frame):
                 else:
                     self.axes.append(f.add_subplot(n, 1, i + 1,
                                                    sharex=self.axes[0]))
-                self.axes[i].plot(self.FileObject.time[group][k],
-                                  self.FileObject.data[group][k])
-                if self.FileObject.thicknesses and k == "Fz, N":
+                self.axes[i].plot(self.FileObjects[self.intSettings["DataObject"].get()-1].time[group][k],
+                                  self.FileObjects[self.intSettings["DataObject"].get()-1].data[group][k])
+                if self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses and k == "Fz, N":
                     try:
-                        self.axes[i].axvline(x=self.FileObject.thicknesses[group][1][0], color='r')
-                        self.axes[i].axvline(x=self.FileObject.thicknesses[group][1][1], color='g')
+                        self.axes[i].axvline(x=self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses[group][1][0], color='r')
+                        self.axes[i].axvline(x=self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses[group][1][1], color='g')
                     except:
                         pass
                 self.axes[i].set_ylabel(k)
         else:
             self.axes.append(f.add_subplot(1,1,1))
-            self.axes[0].plot(self.FileObject.time[group][keys],
-                              self.FileObject.data[group][keys])
-            if self.FileObject.thicknesses and k == "Fz, N":
-                self.axes[i].axvline(l=self.FileObject.thicknesses[group][1][0], color='r')
-                self.axes[i].axvline(l=self.FileObject.thicknesses[group][1][1], color='g')
+            self.axes[0].plot(self.FileObjects[self.intSettings["DataObject"].get()-1].time[group][keys],
+                              self.FileObjects[self.intSettings["DataObject"].get()-1].data[group][keys])
+            if self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses and k == "Fz, N":
+                self.axes[i].axvline(l=self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses[group][1][0], color='r')
+                self.axes[i].axvline(l=self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses[group][1][1], color='g')
             self.axes[0].set_ylabel(keys)
         self.axes[-1].set_xlabel("Time (s)")
-        canvas = FigureCanvasTkAgg(f, master=self.tab1)
-        canvas.show()
-        canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
-                                    rowspan=4, padx=5, pady=5, sticky=NW)
+        canvas_frame = Frame(self.tab1)
+        canvas_frame.grid(row=0, column=2, rowspan=4, sticky=N+W+E+S)
+        canvas = FigureCanvasTkAgg(f, master=canvas_frame)
+        canvas.draw()
+        canvas.get_tk_widget().grid(row=0, column=0,
+                                    padx=1, pady=1, sticky=N+W+E+S)
 
         toolbar_frame = Frame(self.tab1)
-        toolbar_frame.grid(row=5, column=2, sticky=NW)
+        toolbar_frame.grid(row=4, column=2, sticky=NW)
         toolbar = NavigationToolbar2TkAgg(canvas, toolbar_frame)
         toolbar.update()
 
         Button(self.tab1, text="Crop", command=self.cropData).grid(
-            row=5, column=3, sticky=NE)
+            row=4, column=2, sticky=NE)
 
     def findThicknesses(self):
-        for i, g in enumerate(self.FileObject.groups):
-            self.FileObject.getThicknessMach1(g)
+        self.FieldVariables["Thicknesses"] = []
+        for i, g in enumerate(self.FileObjects[self.intSettings["DataObject"].get()-1].groups):
+            self.FileObjects[self.intSettings["DataObject"].get()-1].getThicknessMach1(g)
+            self.FieldVariables["Thicknesses"].append(self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses[g])
 
     def cropData(self):
-        group = self.FileObject.groups[self.intSettings["Group"].get() - 1]
+        group = self.FileObjects[self.intSettings["DataObject"].get()-1].groups[self.intSettings["Group"].get() - 1]
         (start, end) = self.axes[0].xaxis.get_view_interval()
         for c in self.channelSelections.keys():
             if self.channelSelections[c].get():
-                self.FileObject.windowData(group, c, start, end)
+                self.FileObjects[self.intSettings["DataObject"].get()-1].windowData(group, c, start, end)
         self.populateChannelList()
 
     def populateChannelList(self):
-        g = self.FileObject.groups[self.intSettings["Group"].get() - 1]
+        g = self.FileObjects[self.intSettings["DataObject"].get()-1].groups[self.intSettings["Group"].get() - 1]
         self.channelSelections = {}
         for child in self.frameChannels.grid_slaves():
             child.grid_remove()
             del child
         row = 0
         column = 0
-        for i, c in enumerate(self.FileObject.time[g].keys()):
+        for i, c in enumerate(self.FileObjects[self.intSettings["DataObject"].get()-1].time[g].keys()):
             if i % 12 == 0:
                 row = 0
                 column += 1
@@ -214,29 +282,29 @@ class Application(Frame):
                 keys.append(c)
 
         self.makePlot(
-            self.FileObject.groups[self.intSettings["Group"].get() - 1],
+            self.FileObjects[self.intSettings["DataObject"].get()-1].groups[self.intSettings["Group"].get() - 1],
             keys)
 
     def applyMovingAvg(self):
-        group = self.FileObject.groups[
+        group = self.FileObjects[self.intSettings["DataObject"].get()-1].groups[
             self.intSettings["Group"].get() - 1]
         for c in self.channelSelections.keys():
             if self.channelSelections[c].get():
-                self.FileObject.movingAverage(
+                self.FileObjects[self.intSettings["DataObject"].get()-1].movingAverage(
                     group, c, win=self.windowSize.get())
         self.populateChannelList()
 
     def saveFile(self):
-        group = self.FileObject.groups[self.intSettings["Group"].get() - 1]
+        group = self.FileObjects[self.intSettings["DataObject"].get()-1].groups[self.intSettings["Group"].get() - 1]
         for c in self.channelSelections.keys():
             if self.channelSelections[c].get():
                 fid = open(os.path.abspath(string.replace(
                     self.filename, ".tdms", "_{:s}_{:s}.pkl".format(group, c))), "wb")
-                pickle.dump((self.FileObject.time[group][c], self.FileObject.data[group][c]),
+                pickle.dump((self.FileObjects[self.intSettings["DataObject"].get()-1].time[group][c], self.FileObjects[self.intSettings["DataObject"].get()-1].data[group][c]),
                             fid, 2)
                 fid.close()
     def saveCSV(self):
-        group = self.FileObject.groups[self.intSettings["Group"].get() - 1]
+        group = self.FileObjects[self.intSettings["DataObject"].get()-1].groups[self.intSettings["Group"].get() - 1]
         for c in self.channelSelections.keys():
             if self.channelSelections[c].get():
                 if self.filename.lower().endswith(".tdms"):
@@ -249,7 +317,7 @@ class Application(Frame):
                     fid = open(os.path.abspath(oname), "wt")
                 fid.write("Time, {:s}\n".format(c))
                 for (t, v) in zip(
-                        self.FileObject.time[group][c], self.FileObject.data[group][c]):
+                        self.FileObjects[self.intSettings["DataObject"].get()-1].time[group][c], self.FileObjects[self.intSettings["DataObject"].get()-1].data[group][c]):
                     fid.write("{:12.6f}, {:12.6f}\n".format(t, v))
                 fid.close()
 
@@ -266,11 +334,6 @@ class Application(Frame):
         self.cropimage=False
         self.plotImage()
 
-        #try:
-        #    self.image = imread(self.imagefile)
-        #    self.cropImage()
-        #except:
-        #    print("Image loading failed. Ensure that the selected file is a valid image.")
     def loadMachMap(self):
         self.mapfile = tkFileDialog.askopenfilename(
             parent=root,
@@ -280,27 +343,35 @@ class Application(Frame):
         if not self.mapfile:
             print("A file was not selected")
             return
-        self.FileObject.readMach1PositionMap(self.mapfile)
+        self.FileObjects[self.intSettings["DataObject"].get()-1].readMach1PositionMap(self.mapfile)
+        self.maskFromMap()
+        self.getTestLocations()
+
+    def maskFromMap(self):
+        ind = self.intSettings["DataObject"].get()-1
+        self.polygons = []
+        for p in self.FileObjects[ind].MachPositions["SubSurfaceID"].unique():
+            points = self.FileObjects[ind].MachPositions.query('(SubSurfaceID == "{:s}") & (PointType == 1)'.format(p))[["PixelX", "PixelY"]]
+            points = np.array(points)
+            points = np.vstack((points, points[0,:]))
+            self.polygons.append(points)
+            self.UpdateMask()
+
+    def getTestLocations(self):
+        ind = self.intSettings["DataObject"].get()-1
+        self.TestLocations = np.array(self.FileObjects[ind].MachPositions.query("(PointType == 1)")[["PixelX", "PixelY"]])
 
     def cropImage(self):
-        self.image_fig = Figure((6.0, 6.0/self.image_aspect), dpi=self.image_dpi, frameon=False)
-        self.image_ax = self.image_fig.add_axes([0, 0, 1.0, 1.0,])
-        self.image_ax.imshow(self.image)
-        self.image_ax.get_xaxis().set_visible(False)
-        self.image_ax.get_yaxis().set_visible(False)
-        self.image_ax.grid(False)
         self.points = []
         self.polygons = []
-        self.image_canvas = FigureCanvasTkAgg(self.image_fig, master=self.tab2)
         self.image_canvas.get_tk_widget().bind("<Button-1>", self.XY_handler)
         self.image_canvas.get_tk_widget().bind("<Button-3>", self.nextPolygon)
         self.image_canvas.get_tk_widget().bind("<Return>", self.UpdateMask)
-        self.image_canvas.show()
-        self.image_canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
-                                    rowspan=4, padx=5, pady=5, sticky=NW)
+        #self.image_canvas.get_tk_widget().grid(row=0, column=0, padx=1, pady=1, sticky=N+E+W+S)
+        self.image_canvas.draw()
 
     def XY_handler(self, aHandledEVENT):
-        self.points.append((aHandledEVENT.x, aHandledEVENT.y))
+        self.points.append((aHandledEVENT.x*self.screen2index, aHandledEVENT.y*self.screen2index))
         if len(self.points) > 1:
             self.addLine()
 
@@ -317,7 +388,7 @@ class Application(Frame):
         self.polygons.append(tmp)
         self.points = []
 
-    def UpdateMask(self, aHandledEVENT):
+    def UpdateMask(self, aHandledEVENT=None):
         img = Image.new('L', (self.image.shape[1], self.image.shape[0]), 1)
         drw = ImageDraw.Draw(img, 'L')
         for p in self.polygons:
@@ -325,46 +396,64 @@ class Application(Frame):
             drw.polygon(tuple(p), outline=1, fill=0)
         self.maskimage = np.array(img, dtype=bool)
         self.cropimage = True
+        if aHandledEVENT is None:
+            self.image_canvas.get_tk_widget().unbind("<Button-1>")
+            self.image_canvas.get_tk_widget().unbind("<Button-3>")
+            self.image_canvas.get_tk_widget().unbind("<Return>")
         self.plotImage()
 
     def clearMask(self):
         self.cropimage = False
         self.plotImage()
 
+    def populateFieldVariableList(self):
+        for child in self.frameFieldVariables.grid_slaves():
+            child.grid_remove()
+            del child
+        for i, (k, v) in enumerate(self.FieldVariables.items()):
+            Radiobutton(self.frameFieldVariables,
+                        text=k,
+                        indicatoron=0,
+                        variable=self.intSettings["FieldVariables"],
+                        command=self.plotImage(data=v),
+                        value=i+1).grid(row=i, column=0, sticky=N+E+W)
+
     def plotImage(self, data=None):
+        self.imageFrame = Frame(self.tab2)
+        self.image_width_inches = 6.0
+        self.imageFrame.grid(row=0, column=1, padx=1, pady=1, sticky=N+E+W+S)
         self.image_aspect = float(self.image.shape[1])/float(self.image.shape[0])
-        self.image_dpi = self.image.shape[1]/6.0
-        self.image_fig = Figure((6.0, 6.0/self.image_aspect), dpi=self.image_dpi, frameon=False)
+        self.image_dpi = 96
+        self.screen2index = self.image.shape[1] / (self.image_width_inches * self.image_dpi)
+        self.image_fig = Figure((self.image_width_inches, self.image_width_inches/self.image_aspect), dpi=self.image_dpi, frameon=False)
         self.image_ax = self.image_fig.add_axes([0.0, 0.0, 1.0, 1.0,])
-        if self.cropimage:
-            cropped = np.copy(self.image)
-            cropped[self.maskimage, :] = 0
-            self.image_ax.imshow(cropped)
-        else:
-            self.image_ax.imshow(self.image)
+        self.image_ax.imshow(self.image)
         self.image_ax.get_xaxis().set_visible(False)
         self.image_ax.get_yaxis().set_visible(False)
         self.image_ax.grid(False)
-        #grid_size = (960, 1280)
-        #datax = np.random.randint(grid_size[0], size=(22, 1))
-        #datay = np.random.randint(grid_size[1], size=(22, 1))
-        #z = np.random.rand(22)
-        #gridx, gridy = np.mgrid[0:grid_size[0], 0:grid_size[1]]
-        #data = np.hstack((datax, datay))
-        #data = np.float32(data)
-        #gridz = griddata(data, z, (gridx, gridy), method='nearest')
-        #if not(data is None):
-        #    self.image_ax.hold(True)
-        #    cmap = sns.cubehelix_palette(light=1, as_cmap=True)
-        #    im = self.image_ax.imshow(gridz, cmap=cmap, alpha=0.5)
-        #    self.image_fig.colorbar(im)
 
-        self.image_canvas = FigureCanvasTkAgg(self.image_fig, master=self.tab2)
+        self.image_canvas = FigureCanvasTkAgg(self.image_fig, master=self.imageFrame)
+        self.image_canvas.get_tk_widget().grid(row=0, column=0, padx=1, pady=1, sticky=N+E+W+S)
+        self.image_canvas.get_tk_widget().config(width=self.image_width_inches*self.image_dpi,
+                                                 height=self.image_width_inches*self.image_dpi/self.image_aspect)
+        self.image_toolbar_frame = Frame(self.tab2)
+        self.image_toolbar_frame.grid(row=1, column=1, sticky=NW)
+        self.image_toolbar = NavigationToolbar2TkAgg(self.image_canvas, self.image_toolbar_frame)
+        self.image_toolbar.update()
         self.image_canvas.draw()
-        self.image_canvas.get_tk_widget().grid(row=0, column=2, columnspan=2,
-                                    rowspan=4, padx=5, pady=5, sticky=NW)
+
     def overlayData(self):
         self.image_ax.hold(True)
+        grid_size = self.image.shape[0:2]
+        gridx, gridy = np.mgrid[0:grid_size[0], 0:grid_size[1]]
+        key = self.FieldVariables.keys()[self.intSettings["FieldVariables"].get() - 1] 
+        data = np.array(self.FieldVariables[key][-self.TestLocations.shape[0]:])
+        gridz = griddata(self.TestLocations, data, (gridx, gridy), method='nearest')
+        if self.cropimage:
+            gridz = gridz[self.maskimage] = np.nan
+        cmap = sns.cubehelix_palette(light=1, as_cmap=True, alpha=0.5)
+        im = self.image_ax.imshow(gridz, cmap=cmap, alpha=0.5)
+        self.image_fig.colorbar(im)
 
 root = Tk()
 root.title("Welcome to the PoroMech GUI.")
