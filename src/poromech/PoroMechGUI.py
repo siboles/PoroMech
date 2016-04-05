@@ -493,9 +493,8 @@ class Application(Frame):
         gridx, gridy = np.mgrid[0:grid_size[0], 0:grid_size[1]]
         key = self.FieldVariables.keys()[self.intSettings["FieldVariables"].get() - 1] 
         data = np.array(self.FieldVariables[key][-self.TestLocations.shape[0]:])
-        m, se = np.median(data), sem(data)
-        h = se * t.ppf(1.475, data.size - 1)
-        print m+h
+        m, se = np.mean(data), sem(data)
+        h = se * t.ppf(0.975, data.size - 1)
         rbf = Rbf(self.TestLocations[:,0], self.TestLocations[:,1], data, epsilon=2)
         gridz = rbf(gridx, gridy)
         if self.cropimage:
