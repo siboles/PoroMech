@@ -505,11 +505,11 @@ class Application(Frame):
                                   norm=colors.Normalize(vmin=data.min(), vmax=m+h, clip=False))
         #divider = axes_grid1.make_axes_locatable(im.axes)
         #width = axes_grid1.axes_size.AxesY(im.axes, aspect=1/20.)
-        #pad = axes_grid1.axes_size.Fraction(0.25, width)
-        #cax = divider.append_axes("right", size=width, pad=pad)
+        #pad = axes_grid1.axes_size.Fraction(0.5, width)
+        #cax = divider.new_horizontal(size=width, pad=pad)
+        #self.image_fig.add_axes(cax)
 
-        #self.image_fig.colorbar(im, cax=cax)
-        self.image_fig.colorbar(im)
+        self.image_fig.colorbar(im, shrink=0.75) 
         self.image_canvas.draw()
 
 root = Tk()
