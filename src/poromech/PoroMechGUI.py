@@ -1,6 +1,6 @@
 from Tkinter import *
 from ttk import Notebook
-import tkFileDialog
+import tkFileDialog, tkMessageBox
 from PoroMech import Data
 import os
 import pickle
@@ -9,12 +9,15 @@ import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.figure import Figure
 from matplotlib.path import Path
+from mpl_toolkits import axes_grid1
 import matplotlib.patches as patches
+import matplotlib.colors as colors
 import seaborn as sns
 import numpy as np
 from numpy import ma
 from scipy.ndimage import imread
-from scipy.interpolate import griddata
+from scipy.interpolate import Rbf
+from scipy.stats import sem, t
 from PIL import Image, ImageDraw
 from collections import OrderedDict
 
@@ -25,6 +28,7 @@ class Application(Frame):
     def __init__(self, master):
         Frame.__init__(self, master)
         self.FileObjects = []
+        self.FileObjectNames = []
         self.intSettings = {'Group': IntVar(value=1),
                             'DataObject': IntVar(value=1),
                             'FieldVariables': IntVar(value=1)}
@@ -39,26 +43,29 @@ class Application(Frame):
         self.notebook.grid(row=0, column=0, sticky=NW)
 
         #####  BEGIN TAB 1 #####
-        self.buttonLoadFile = Button(self.tab1, text="Load Data File",
+        self.frameDataFiles = Frame(self.tab1)
+        self.frameDataFiles.grid(row=0, column=0, sticky=N+W+E)
+        self.buttonLoadFile = Button(self.frameDataFiles, text="Load Data File",
                                      command=self.loadFile)
         self.buttonLoadFile.grid(row=0, column=0, padx=1, pady=1,
                                  sticky=N+W+E)
-        self.buttonRemoveFile = Button(self.tab1, text="Remove Selected File")
+        self.buttonRemoveFile = Button(self.frameDataFiles, text="Remove Selected File",
+                                       command=self.removeDataObject)
         self.buttonRemoveFile.grid(row=1, column=0, padx=1, pady=1, sticky=N+W+E)
         self.frameDataObjects = LabelFrame(self.tab1, text="Data Files")
         self.frameDataObjects.grid(row=0, column=1, padx=1, pady=1, sticky=N+W+E)
 
         self.frameGroups = LabelFrame(self.tab1, text="Group Selection")
-        self.frameGroups.grid(row=2, column=0, padx=1, pady=1,
+        self.frameGroups.grid(row=1, column=0, padx=1, pady=1,
                               sticky=N+W+E )
         Label(self.frameGroups, text="").grid(row=0, column=0, sticky=N+W+E)
         self.frameChannels = LabelFrame(self.tab1, text="Channel Selection")
-        self.frameChannels.grid(row=2, column=1, padx=1, pady=1,
+        self.frameChannels.grid(row=1, column=1, padx=1, pady=1,
                                 sticky=N+W+E)
         Label(self.frameChannels, text="").grid(row=0, column=0, sticky=N+W+E)
 
         self.frameTab1BottomLeft = Frame(self.tab1)
-        self.frameTab1BottomLeft.grid(row=3, column=0, padx=1, pady=1, sticky=N+W+E)
+        self.frameTab1BottomLeft.grid(row=2, column=0, padx=1, pady=1, sticky=N+W+E)
         self.buttonSaveFile = Button(self.frameTab1BottomLeft, text="Save Selected to Pickle",
                                      command=self.saveFile)
         self.buttonSaveFile.grid(row=0, column=0, padx=1, pady=1,
@@ -78,7 +85,7 @@ class Application(Frame):
                              sticky=N+W+E)
 
         self.frameTab1BottomRight = Frame(self.tab1)
-        self.frameTab1BottomRight.grid(row=3, column=1, padx=1, pady=1, sticky=N+W+E)
+        self.frameTab1BottomRight.grid(row=2, column=1, padx=1, pady=1, sticky=N+W+E)
         self.buttonMovingAvg = Button(self.frameTab1BottomRight, text="Apply Moving Average",
                                       command=self.applyMovingAvg)
         self.buttonMovingAvg.grid(row=0, column=0, padx=1, pady=1, columnspan=2,
@@ -121,6 +128,7 @@ class Application(Frame):
             title="Select a Data File.")
         if self.filename:
             self.FileObjects.append(Data(self.filename))
+            self.FileObjectNames.append(os.path.basename(self.filename))
             for child in self.frameGroups.grid_slaves():
                 child.grid_remove()
                 del child
@@ -157,7 +165,7 @@ class Application(Frame):
                 row += 1
             counter = len(self.frameDataObjects.grid_slaves()) + 1
             Radiobutton(self.frameDataObjects,
-                        text=os.path.split(self.filename)[1],
+                        text=self.FileObjectNames[-1],
                         indicatoron=0,
                         variable=self.intSettings["DataObject"],
                         command=self.selectDataObject,
@@ -198,6 +206,31 @@ class Application(Frame):
                         text=c,
                         variable=self.channelSelections[c]).grid(row=row, column=column, sticky=NW)
             row += 1
+
+    def removeDataObject(self):
+        if tkMessageBox.askyesno(message="Really remove the selected data?"):
+            del self.FileObjects[self.intSettings["DataObject"].get()-1]
+            del self.FileObjectNames[self.intSettings["DataObject"].get()-1]
+            for child in self.frameDataObjects.grid_slaves():
+                child.grid_remove()
+                del child
+            for i, o in enumerate(self.FileObjects):
+                Radiobutton(self.frameDataObjects,
+                            text=self.FileObjectNames[i],
+                            indicatoron=0,
+                            variable=self.intSettings["DataObject"],
+                            command=self.selectDataObject,
+                            value=i+1).grid(row=i, column=0, sticky=N+E+W)
+            if len(self.FileObjects) > 0:
+                self.intSettings["DataObject"].set(1)
+            else:
+                for child in self.frameGroups.grid_slaves():
+                    child.grid_remove()
+                    del child
+                for child in self.frameChannels.grid_slaves():
+                    child.grid_remove()
+                    del child
+
 
     def makePlot(self, group, keys):
         f = Figure()
@@ -247,7 +280,8 @@ class Application(Frame):
         self.FieldVariables["Thicknesses"] = []
         for i, g in enumerate(self.FileObjects[self.intSettings["DataObject"].get()-1].groups):
             self.FileObjects[self.intSettings["DataObject"].get()-1].getThicknessMach1(g)
-            self.FieldVariables["Thicknesses"].append(self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses[g])
+            self.FieldVariables["Thicknesses"].append(self.FileObjects[self.intSettings["DataObject"].get()-1].thicknesses[g][0])
+        self.populateFieldVariableList()
 
     def cropData(self):
         group = self.FileObjects[self.intSettings["DataObject"].get()-1].groups[self.intSettings["Group"].get() - 1]
@@ -303,6 +337,7 @@ class Application(Frame):
                 pickle.dump((self.FileObjects[self.intSettings["DataObject"].get()-1].time[group][c], self.FileObjects[self.intSettings["DataObject"].get()-1].data[group][c]),
                             fid, 2)
                 fid.close()
+
     def saveCSV(self):
         group = self.FileObjects[self.intSettings["DataObject"].get()-1].groups[self.intSettings["Group"].get() - 1]
         for c in self.channelSelections.keys():
@@ -359,7 +394,7 @@ class Application(Frame):
 
     def getTestLocations(self):
         ind = self.intSettings["DataObject"].get()-1
-        self.TestLocations = np.array(self.FileObjects[ind].MachPositions.query("(PointType == 1)")[["PixelX", "PixelY"]])
+        self.TestLocations = np.array(self.FileObjects[ind].MachPositions.query("(PointType == 0)")[["PixelX", "PixelY"]])
 
     def cropImage(self):
         self.points = []
@@ -415,10 +450,20 @@ class Application(Frame):
                         text=k,
                         indicatoron=0,
                         variable=self.intSettings["FieldVariables"],
-                        command=self.plotImage(data=v),
                         value=i+1).grid(row=i, column=0, sticky=N+E+W)
+        try:
+            self.buttonPlotOverlay
+        except:
+            self.buttonPlotOverlay = Button(self.frameImageButtons,
+                                            text="Plot Selected",
+                                            command=self.overlayData)
+            self.buttonPlotOverlay.grid(row=4, column=0, sticky=N+W+E)
 
     def plotImage(self, data=None):
+        try:
+            self.image
+        except:
+            return
         self.imageFrame = Frame(self.tab2)
         self.image_width_inches = 6.0
         self.imageFrame.grid(row=0, column=1, padx=1, pady=1, sticky=N+E+W+S)
@@ -448,12 +493,25 @@ class Application(Frame):
         gridx, gridy = np.mgrid[0:grid_size[0], 0:grid_size[1]]
         key = self.FieldVariables.keys()[self.intSettings["FieldVariables"].get() - 1] 
         data = np.array(self.FieldVariables[key][-self.TestLocations.shape[0]:])
-        gridz = griddata(self.TestLocations, data, (gridx, gridy), method='nearest')
+        m, se = np.median(data), sem(data)
+        h = se * t.ppf(1.475, data.size - 1)
+        print m+h
+        rbf = Rbf(self.TestLocations[:,0], self.TestLocations[:,1], data, epsilon=2)
+        gridz = rbf(gridx, gridy)
         if self.cropimage:
-            gridz = gridz[self.maskimage] = np.nan
-        cmap = sns.cubehelix_palette(light=1, as_cmap=True, alpha=0.5)
-        im = self.image_ax.imshow(gridz, cmap=cmap, alpha=0.5)
+            gridz = ma.masked_where(self.maskimage, gridz, copy=False)
+            #gridz = ma.masked_where(np.abs((gridz - med))/mdev > 7.0, gridz, copy=False) 
+        cmap = sns.cubehelix_palette(light=1, as_cmap=True)
+        im = self.image_ax.imshow(gridz, cmap=cmap, alpha=0.75,
+                                  norm=colors.Normalize(vmin=data.min(), vmax=m+h, clip=False))
+        #divider = axes_grid1.make_axes_locatable(im.axes)
+        #width = axes_grid1.axes_size.AxesY(im.axes, aspect=1/20.)
+        #pad = axes_grid1.axes_size.Fraction(0.25, width)
+        #cax = divider.append_axes("right", size=width, pad=pad)
+
+        #self.image_fig.colorbar(im, cax=cax)
         self.image_fig.colorbar(im)
+        self.image_canvas.draw()
 
 root = Tk()
 root.title("Welcome to the PoroMech GUI.")

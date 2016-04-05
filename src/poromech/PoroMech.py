@@ -4,7 +4,7 @@ import numpy as np
 from scipy.fftpack import fft, ifft
 from scipy import conj
 from scipy.signal import medfilt, find_peaks_cwt
-from scipy.optimize import minimize_scalar, fmin_slsqp
+from scipy.optimize import curve_fit
 import string
 from itertools import izip, count, islice, ifilter
 from collections import OrderedDict
@@ -70,36 +70,20 @@ class Data(object):
     def getMaxMinIndex(self, group, channel):
         return np.argmin(self.data[group][channel]), np.argmax(self.data[group][channel])
 
-    def bracketSearchObj(self, x, data, h):
-        print data
-        # soft material slope guess
-        m1 = (data[h] - data[0]) / float(h)
-        # hard material slope guess
-        m2 = (data[-1] - data[-h]) / float(h)
-        # hard material intercept guess
-        b2 = -m2*data.size + data[-1]
-        x0 = [m1, m2, b2]
-        step_size = np.abs(data.max() - data.min())/data.size * 0.1
+    def lineFit(self, x, y0, k1):
+        return k1*x + y0
 
-        args = (data, x)
-        res = fmin_slsqp(self.piecewiseLineFitObj, x0, args=args, iprint=2, epsilon=step_size)
-        return res[1]
-
-    def piecewiseLineFitObj(self, x, data, transition):
-        t = np.arange(data.size)
-        func = np.piecewise(t, [t < transition, t>= transition], [lambda t: x[0]*t + data[0],
-                                                                  lambda t: x[1]*t + x[2]])
-        N1 = data[0:transition].size
-        N2 = data.size - N1
-        weights = [float(N2)/data.size] * N1 + [float(N1) / data.size] * N2
-        weights = np.array(weights)
-        return np.linalg.norm((data - func)*weights)
+    def piecewiseLineFitObj(self, x, x0, y0, k1, k2):
+        func = np.piecewise(x, [x < x0], [lambda x: k1*x + y0-k1*x0,
+                                          lambda x: k2*x + y0-k2*x0])
+        return func
 
     def getThicknessMach1(self, group):
         dt = self.time[group]["Fz, N"][1] - self.time[group]["Fz, N"][0]
         strain_rate = np.diff(self.data[group]["Position (z), mm"]) / dt
         if not np.any(strain_rate < 0):
             print("Warning: It seems the needle never made contact. Terminating the thickness calculation for group: {:d}".format(group))
+            self.thicknesses[group] = (np.nan, (np.nan, np.nan))
             return
         strain_rate = np.mean(strain_rate[strain_rate > 0])
         end = self.getMaxMinIndex(group, "Fz, N")[0]
@@ -124,21 +108,32 @@ class Data(object):
                     transition = transition[ind]
                     #if still too close to minimum - revert to piecewise fit
                     if (tmp.size - transition) < .01/strain_rate/dt:
-                        args = (tmp, 0.1 / dt,)
-                        res = minimize_scalar(self.bracketSearchObj,
-                                            bounds=(0, tmp.size),
-                                            args=args,
-                                            method="Bounded")
-                        transition = res.x
+                        #fit line to first 50 microns
+                        n = int(0.05/strain_rate/dt)
+                        p1, e1 = curve_fit(self.lineFit, np.arange(n), tmp[0:n])
+                        #fit line to last 50 microns
+                        p2, e2 = curve_fit(self.lineFit, np.arange(tmp.size-n, tmp.size), tmp[-n:])
+                        #intersection of these two lines
+                        intersect = (p2[0] - p1[0]) / (p1[1] - p2[1])
+                        #reslice tmp to have equal points before and after intersection
+                        if 2*int(intersect) < tmp.size:
+                            tmp = tmp[0:2*int(intersect)]
+                        p, e = curve_fit(self.piecewiseLineFitObj, np.arange(tmp.size)*dt, tmp)
+                        transition = p[0]/dt
             else:
-                args = (tmp, 0.1 / dt,)
-                res = minimize_scalar(self.bracketSearchObj,
-                                      bounds=(0, tmp.size),
-                                      args=args,
-                                      method="Bounded")
-                transition = res.x
+                #fit line to first 50 microns
+                n = int(0.05/strain_rate/dt)
+                p1, e1 = curve_fit(self.lineFit, np.arange(n), tmp[0:n])
+                #fit line to last 50 microns
+                p2, e2 = curve_fit(self.lineFit, np.arange(tmp.size-n, tmp.size), tmp[-n:])
+                #intersection of these two lines
+                intersect = (p2[0] - p1[0]) / (p1[1] - p2[1])
+                #reslice tmp to have equal points before and after intersection
+                tmp = tmp[0:2*int(intersect)]
 
-        self.thicknesses[group] = (np.abs(self.data[group]["Position (z), mm"][start + transition] -
+                p, e = curve_fit(self.piecewiseLineFitObj, np.arange(tmp.size)*dt, tmp)
+                transition = p[0]/dt
+        self.thicknesses[group] = (np.abs(self.data[group]["Position (z), mm"][start + int(transition)] -
                                           self.data[group]["Position (z), mm"][start]),
                                    (float(start + transition)*dt, start*dt))
     def readMach1PositionMap(self, filename):
