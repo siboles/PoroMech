@@ -16,7 +16,7 @@ import seaborn as sns
 import numpy as np
 from numpy import ma
 from scipy.ndimage import imread
-from scipy.interpolate import Rbf
+from scipy.interpolate import Rbf, griddata
 from scipy.stats import sem, t
 from PIL import Image, ImageDraw
 from collections import OrderedDict
@@ -394,7 +394,7 @@ class Application(Frame):
 
     def getTestLocations(self):
         ind = self.intSettings["DataObject"].get()-1
-        self.TestLocations = np.array(self.FileObjects[ind].MachPositions.query("(PointType == 0)")[["PixelX", "PixelY"]])
+        self.TestLocations = np.array(self.FileObjects[ind].MachPositions.query("(PointType == 0)")[["PixelX", "PixelY"]], dtype=float)
 
     def cropImage(self):
         self.points = []
@@ -495,21 +495,21 @@ class Application(Frame):
         data = np.array(self.FieldVariables[key][-self.TestLocations.shape[0]:])
         m, se = np.mean(data), sem(data)
         h = se * t.ppf(0.975, data.size - 1)
-        rbf = Rbf(self.TestLocations[:,0], self.TestLocations[:,1], data, epsilon=2)
-        gridz = rbf(gridx, gridy)
+        #rbf = Rbf(self.TestLocations[:,0], self.TestLocations[:,1], data, epsilon=2)
+        #gridz = rbf(gridx, gridy)
+        gridz = griddata(self.TestLocations[:, [1, 0]], data, (gridx, gridy), 'nearest')
         if self.cropimage:
             gridz = ma.masked_where(self.maskimage, gridz, copy=False)
             #gridz = ma.masked_where(np.abs((gridz - med))/mdev > 7.0, gridz, copy=False) 
         cmap = sns.cubehelix_palette(light=1, as_cmap=True)
         im = self.image_ax.imshow(gridz, cmap=cmap, alpha=0.75,
                                   norm=colors.Normalize(vmin=data.min(), vmax=m+h, clip=False))
-        #divider = axes_grid1.make_axes_locatable(im.axes)
-        #width = axes_grid1.axes_size.AxesY(im.axes, aspect=1/20.)
-        #pad = axes_grid1.axes_size.Fraction(0.5, width)
-        #cax = divider.new_horizontal(size=width, pad=pad)
-        #self.image_fig.add_axes(cax)
 
         self.image_fig.colorbar(im, shrink=0.75) 
+        self.image_ax.scatter(self.TestLocations[:,0], self.TestLocations[:,1])
+        text = [str(i+1) for i in xrange(self.TestLocations.shape[0])]
+        for i, tt in enumerate(text):
+            self.image_ax.text(self.TestLocations[i,0] + 10, self.TestLocations[i,1] - 10, tt, color="orange", size=8)
         self.image_canvas.draw()
 
 root = Tk()

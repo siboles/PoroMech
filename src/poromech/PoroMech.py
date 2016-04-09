@@ -5,6 +5,7 @@ from scipy.fftpack import fft, ifft
 from scipy import conj
 from scipy.signal import medfilt, find_peaks_cwt
 from scipy.optimize import curve_fit
+from scipy.interpolate import splrep, splev
 import string
 from itertools import izip, count, islice, ifilter
 from collections import OrderedDict
@@ -73,9 +74,19 @@ class Data(object):
     def lineFit(self, x, y0, k1):
         return k1*x + y0
 
-    def piecewiseLineFitObj(self, x, x0, y0, k1, k2):
-        func = np.piecewise(x, [x < x0], [lambda x: k1*x + y0-k1*x0,
-                                          lambda x: k2*x + y0-k2*x0])
+    def piecewiseExpLineFitObj(self, x, x0, y0, k1, y1, k2):
+        func = np.piecewise(x, [x < x0, x>=x0], [lambda x: k1*np.exp(y0*x),
+                                                 lambda x: k2*x +  y1-k2*x0])
+        return func
+
+    def piecewiseLineExpFitObj(self, x, x0, y0, k1, y1, k2, b2):
+        func = np.piecewise(x, [x < x0, x>=x0], [lambda x: k1*x + y0-k1*x0,
+                                                 lambda x: k2*np.exp(y1*(x-x0)) + b2])
+        return func
+
+    def piecewiseLineLineFitObj(self, x, x0, y0, k1, y1, k2):
+        func = np.piecewise(x, [x < x0, x>=x0], [lambda x: k1*x + y0-k1*x0,
+                                                 lambda x: k2*x +  y1-k2*x0])
         return func
 
     def getThicknessMach1(self, group):
@@ -90,7 +101,7 @@ class Data(object):
         tmp = self.data[group]["Fz, N"][0:end+1]
         start = np.where(np.abs(medfilt(tmp, kernel_size=19)) < 1e-2)[0][-1]
         windows = np.arange(int(.05/dt), int(1/dt), 1)
-        transition = find_peaks_cwt(-tmp[start:], widths=windows, min_length=int(windows.size/2), min_snr=1.0)
+        transition = find_peaks_cwt(-tmp[start:], widths=windows, min_length=int(windows.size), min_snr=1.0)
         tmp = tmp[start:]
         transition = np.array(transition)
         if transition.size > 0:
@@ -99,43 +110,59 @@ class Data(object):
             if transition.any():
                 ind = np.argmax(tmp[transition])
                 transition = transition[ind]
-                #if transition is within 10 microns of the minimum force position try scale-space with weaker tolerance
+                #if still too close to minimum - revert to piecewise fit
                 if (tmp.size - transition) < .01/strain_rate/dt:
-                    transition = find_peaks_cwt(-tmp, widths=windows, min_length=int(windows.size/4), min_snr=1.0)
-                    transition = np.array(transition)
-                    transition = transition[transition>.05/strain_rate/dt]
-                    ind = np.argmax(tmp[transition])
-                    transition = transition[ind]
-                    #if still too close to minimum - revert to piecewise fit
-                    if (tmp.size - transition) < .01/strain_rate/dt:
-                        #fit line to first 50 microns
-                        n = int(0.05/strain_rate/dt)
-                        p1, e1 = curve_fit(self.lineFit, np.arange(n), tmp[0:n])
-                        #fit line to last 50 microns
-                        p2, e2 = curve_fit(self.lineFit, np.arange(tmp.size-n, tmp.size), tmp[-n:])
-                        #intersection of these two lines
-                        intersect = (p2[0] - p1[0]) / (p1[1] - p2[1])
-                        #reslice tmp to have equal points before and after intersection
-                        if 2*int(intersect) < tmp.size:
-                            tmp = tmp[0:2*int(intersect)]
-                        p, e = curve_fit(self.piecewiseLineFitObj, np.arange(tmp.size)*dt, tmp)
-                        transition = p[0]/dt
-            else:
-                #fit line to first 50 microns
-                n = int(0.05/strain_rate/dt)
-                p1, e1 = curve_fit(self.lineFit, np.arange(n), tmp[0:n])
-                #fit line to last 50 microns
-                p2, e2 = curve_fit(self.lineFit, np.arange(tmp.size-n, tmp.size), tmp[-n:])
-                #intersection of these two lines
-                intersect = (p2[0] - p1[0]) / (p1[1] - p2[1])
-                #reslice tmp to have equal points before and after intersection
-                tmp = tmp[0:2*int(intersect)]
+                    t = np.arange(tmp.size)*dt
+                    p = ['' for i in xrange(3)]
+                    e = ['' for i in xrange(3)]
+                    guess = [tmp.size*dt/2.0, 0, -1, 0, -1]
+                    try:
+                        p[0], e[0] = curve_fit(self.piecewiseExpLineFitObj, t, tmp, p0=guess,
+                                            method='dogbox', diff_step=[10*dt, 1e-3, 1e-3, 1e-3, 1e-3],
+                                            verbose=0)
+                    except:
+                        p[0] = [1.0, 1.0, 1.0, 1.0, 1.0]
+                        e[0] = np.eye(5) * 1e6
+                    guess2 = [tmp.size*dt/2.0, 0, -1, 0, -1, 0]
+                    try:
+                        p[1], e[1] = curve_fit(self.piecewiseLineExpFitObj, t, tmp, p0=guess2,
+                                            method='dogbox', diff_step=[10*dt, 1e-3, 1e-3, 1e-3, 1e-3, 1e-3],
+                                            verbose=0)
+                    except:
+                        p[1] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+                        e[1] = np.eye(6) * 1e6
+                    try:
+                        p[2], e[2] = curve_fit(self.piecewiseLineLineFitObj, t, tmp, p0=guess,
+                                            method='dogbox', diff_step=[10*dt, 1e-3, 1e-3, 1e-3, 1e-3],
+                                            verbose=0)
+                    except:
+                        p[1] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+                        e[1] = np.eye(5) * 1e6
+                    error = [np.sum(np.abs(np.sqrt(np.diag(e[i]))/p[i])) for i in xrange(3)]
 
-                p, e = curve_fit(self.piecewiseLineFitObj, np.arange(tmp.size)*dt, tmp)
-                transition = p[0]/dt
+                    transition = p[np.argmin(error)][0]/dt
+            else:
+                t = np.arange(tmp.size)*dt
+                p = ['' for i in xrange(3)]
+                e = ['' for i in xrange(3)]
+                guess = [tmp.size*dt/2.0, 0, -1, 0, -1]
+                p[0], e[0] = curve_fit(self.piecewiseExpLineFitObj, t, tmp, p0=guess,
+                                        method='dogbox', diff_step=[10*dt, 1e-3, 1e-3, 1e-3, 1e-3],
+                                        verbose=1)
+                guess2 = [tmp.size*dt/2.0, 0, -1, 0, -1, 0]
+                p[1], e[1] = curve_fit(self.piecewiseLineExpFitObj, t, tmp, p0=guess2,
+                                        method='dogbox', diff_step=[10*dt, 1e-3, 1e-3, 1e-3, 1e-3, 1e-3],
+                                        verbose=1)
+                p[2], e[2] = curve_fit(self.piecewiseLineLineFitObj, t, tmp, p0=guess,
+                                        method='dogbox', diff_step=[10*dt, 1e-3, 1e-3, 1e-3, 1e-3],
+                                        verbose=1)
+                error = [np.sum(np.abs(np.sqrt(np.diag(e[i]))/p[i])) for i in xrange(3)]
+
+                transition = p[np.argmin(error)][0]/dt
         self.thicknesses[group] = (np.abs(self.data[group]["Position (z), mm"][start + int(transition)] -
                                           self.data[group]["Position (z), mm"][start]),
                                    (float(start + transition)*dt, start*dt))
+
     def readMach1PositionMap(self, filename):
         fid = open(filename, "r")
         lines = map(string.strip, fid.readlines())
